@@ -1,0 +1,14 @@
+spring:
+  application:
+    name: benchmarking
+  config:
+    import: "optional:classpath:configs/execution-matrix.yaml"
+server:
+  port: 8081
+benchmark:
+  execution:
+    max-concurrency: 6
+    max-retries: 1
+    task-timeout-ms: 600000
+    circuit-breaker-failure-threshold: 3
+    circuit-breaker-open-ms: 60000

@@ -1,0 +1,14 @@
+{
+    "configurations": [
+        {
+            "type": "java",
+            "name": "Spring Boot-BenchmarkingApplication<benchmarking>",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "mainClass": "com.devashish.learning.benchmarking.BenchmarkingApplication",
+            "projectName": "benchmarking",
+            "args": "",
+            "envFile": "${workspaceFolder}/.env"
+        }
+    ]
+}

@@ -1,0 +1,27 @@
+
+
+POST http://localhost:8081/bench/weekly-trigger
+Content-Type: application/json
+
+{
+  "runid": "123e4567-e89b-12d3-a456-426614174000",
+  "language": "all"
+}
+
+###
+
+POST http://localhost:8081/bench/runs
+Content-Type: application/json
+
+{
+  "runid": "123e4567-e89b-12d3-a456-426614174111",
+  "language": "all"
+}
+
+###
+
+GET http://localhost:8081/bench/runs/123e4567-e89b-12d3-a456-426614174111
+
+###
+
+GET http://localhost:8081/bench/runs/123e4567-e89b-12d3-a456-426614174111/results

@@ -1,0 +1,42 @@
+# prefix search
+execution-matrix:
+# languages field
+  language:
+  # Map<language, Map<dataset,List<tool>>>
+    java:
+      owasp:
+        - semgrep
+        - llm
+        - qca
+      semgrep_compiled:
+        - semgrep
+        - qca
+    python:
+      codcop:
+        - semgrep
+        - llm
+        - qca
+      semgrep_prime:
+        - semgrep
+        - qca
+    javascript:
+      owasp_js:
+        - semgrep
+        - llm
+      eslint_security:
+        - semgrep
+        - qca
+    go:
+      gosec_suite:
+        - semgrep
+        - llm
+      standard_lib_checks:
+        - semgrep
+        - qca
+    csharp:
+      dotnet_security:
+        - semgrep
+        - llm
+        - qca
+      roslyn_ruleset:
+        - semgrep
