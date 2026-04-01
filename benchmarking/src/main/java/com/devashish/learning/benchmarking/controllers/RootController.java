@@ -88,6 +88,11 @@ public class RootController {
         return ResponseEntity.ok(benchmarkEvaluationService.getRunEvaluations(runId));
     }
 
+    @GetMapping("/analytics/overview")
+    public ResponseEntity<BenchmarkEvaluationResponse> getAnalyticsOverview() {
+        return ResponseEntity.ok(benchmarkEvaluationService.getAnalyticsOverview());
+    }
+
     @GetMapping("/runs/{runId}/tasks")
     public ResponseEntity<java.util.List<TaskProgressView>> getRunTasks(@PathVariable UUID runId) {
         return ResponseEntity.ok(benchmarkRunQueryService.getRunTasks(runId));

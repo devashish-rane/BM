@@ -21,6 +21,14 @@ public interface BenchmarkTaskRepository extends JpaRepository<BenchmarkTaskEnti
         select task
         from BenchmarkTaskEntity task
         join fetch task.run run
+        order by task.language asc, task.dataset asc, task.tool asc, run.submittedAt asc
+        """)
+    List<BenchmarkTaskEntity> findAllForAnalyticsOverview();
+
+    @Query("""
+        select task
+        from BenchmarkTaskEntity task
+        join fetch task.run run
         where task.language = :language
           and task.dataset = :dataset
           and task.tool = :tool

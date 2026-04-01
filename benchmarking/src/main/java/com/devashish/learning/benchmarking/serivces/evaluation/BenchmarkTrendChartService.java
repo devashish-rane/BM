@@ -57,7 +57,40 @@ public class BenchmarkTrendChartService {
                 .legend span::before { content: ''; display: inline-block; width: 10px; height: 10px; border-radius: 50%%; margin-right: 8px; }
                 .legend .precision::before { background: #22d3ee; }
                 .legend .recall::before { background: #4ade80; }
+                .chart-shell { position: relative; }
                 svg { width: 100%%; height: auto; background: rgba(15,23,42,0.7); border-radius: 16px; }
+                .chart-tooltip {
+                  position: absolute;
+                  min-width: 180px;
+                  max-width: 260px;
+                  padding: 12px 14px;
+                  border-radius: 12px;
+                  border: 1px solid rgba(148,163,184,0.22);
+                  background: rgba(15,23,42,0.96);
+                  color: #e2e8f0;
+                  box-shadow: 0 18px 40px rgba(15,23,42,0.45);
+                  pointer-events: none;
+                  opacity: 0;
+                  transform: translate(-50%%, calc(-100%% - 14px));
+                  transition: opacity 120ms ease;
+                  z-index: 3;
+                }
+                .chart-tooltip.visible { opacity: 1; }
+                .chart-tooltip::after {
+                  content: '';
+                  position: absolute;
+                  left: 50%%;
+                  bottom: -8px;
+                  width: 12px;
+                  height: 12px;
+                  background: rgba(15,23,42,0.96);
+                  border-right: 1px solid rgba(148,163,184,0.22);
+                  border-bottom: 1px solid rgba(148,163,184,0.22);
+                  transform: translateX(-50%%) rotate(45deg);
+                }
+                .chart-tooltip strong { display: block; margin-bottom: 6px; font-size: 13px; color: #f8fafc; }
+                .chart-tooltip span { display: block; font-size: 12px; color: #cbd5e1; line-height: 1.45; }
+                .chart-point { cursor: pointer; }
                 .note { margin-top: 10px; font-size: 13px; color: #94a3b8; }
                 .footer { margin-top: 16px; font-size: 13px; color: #94a3b8; }
               </style>
@@ -77,11 +110,59 @@ public class BenchmarkTrendChartService {
                     <span class="precision">Precision</span>
                     <span class="recall">Recall</span>
                   </div>
-                  %s
+                  <div class="chart-shell">
+                    %s
+                    <div id="chart-tooltip" class="chart-tooltip" aria-hidden="true"></div>
+                  </div>
                   <p class="note">Each point represents one recorded run for this language, dataset, and tool. Hover a point to inspect the exact week and metric value.</p>
                   <p class="footer">Source repo: %s</p>
                 </section>
               </main>
+              <script>
+                (() => {
+                  const tooltip = document.getElementById('chart-tooltip');
+                  const chart = document.querySelector('.chart-shell');
+                  if (!tooltip || !chart) {
+                    return;
+                  }
+
+                  const hideTooltip = () => {
+                    tooltip.classList.remove('visible');
+                    tooltip.setAttribute('aria-hidden', 'true');
+                  };
+
+                  const showTooltip = (point) => {
+                    const rect = chart.getBoundingClientRect();
+                    const x = Number(point.dataset.x ?? '0');
+                    const y = Number(point.dataset.y ?? '0');
+                    const lines = (point.dataset.tooltip ?? '').split('|').map((line) => line.trim()).filter(Boolean);
+
+                    if (lines.length === 0) {
+                      hideTooltip();
+                      return;
+                    }
+
+                    const headline = lines[0];
+                    const details = lines.slice(1).map((line) => `<span>${line}</span>`).join('');
+                    tooltip.innerHTML = `<strong>${headline}</strong>${details}`;
+
+                    const tooltipWidth = tooltip.offsetWidth || 220;
+                    const clampedX = Math.max(tooltipWidth / 2 + 8, Math.min(rect.width - tooltipWidth / 2 - 8, x));
+
+                    tooltip.style.left = `${clampedX}px`;
+                    tooltip.style.top = `${y}px`;
+                    tooltip.classList.add('visible');
+                    tooltip.setAttribute('aria-hidden', 'false');
+                  };
+
+                  chart.querySelectorAll('.chart-point').forEach((point) => {
+                    point.addEventListener('mouseenter', () => showTooltip(point));
+                    point.addEventListener('focus', () => showTooltip(point));
+                    point.addEventListener('mouseleave', hideTooltip);
+                    point.addEventListener('blur', hideTooltip);
+                  });
+                })();
+              </script>
             </body>
             </html>
             """.formatted(
@@ -193,14 +274,16 @@ public class BenchmarkTrendChartService {
             int radius = index == points.size() - 1 ? 6 : 4;
             String stroke = index == points.size() - 1 ? "#ffffff" : color;
             int strokeWidth = index == points.size() - 1 ? 2 : 1;
-            markers.append("<circle cx=\"").append(x)
+            markers.append("<circle class=\"chart-point\" tabindex=\"0\" cx=\"").append(x)
                 .append("\" cy=\"").append(y)
                 .append("\" r=\"").append(radius)
                 .append("\" fill=\"").append(color)
                 .append("\" stroke=\"").append(stroke)
                 .append("\" stroke-width=\"").append(strokeWidth)
+                .append("\" data-x=\"").append(x)
+                .append("\" data-y=\"").append(y)
+                .append("\" data-tooltip=\"").append(escapeHtml(points.get(index).tooltip()))
                 .append("\">")
-                .append("<title>").append(escapeHtml(points.get(index).tooltip())).append("</title>")
                 .append("</circle>");
 
             if (index == points.size() - 1) {

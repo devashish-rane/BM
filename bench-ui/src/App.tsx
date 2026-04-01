@@ -167,10 +167,8 @@ const TERMINAL_JOB_STATES: JobStatus[] = ['COMPLETED', 'PARTIALLY_COMPLETED', 'F
 const LANGUAGE_OPTIONS = ['all', 'java', 'python', 'javascript', 'go', 'csharp']
 
 function App() {
-  const analyticsRunId = getAnalyticsRunId()
-
-  if (analyticsRunId) {
-    return <RunAnalyticsPage runId={analyticsRunId} />
+  if (isAnalyticsPage()) {
+    return <AnalyticsOverviewPage />
   }
 
   return <DashboardPage />
@@ -203,8 +201,24 @@ function DashboardPage() {
 
   useEffect(() => {
     void loadRuns()
+
+    const handleWindowFocus = () => {
+      void loadRuns(true)
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void loadRuns(true)
+      }
+    }
+
+    window.addEventListener('focus', handleWindowFocus)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
     return () => {
       stopPolling()
+      window.removeEventListener('focus', handleWindowFocus)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
   }, [])
 
@@ -504,9 +518,14 @@ function DashboardPage() {
           <h1>Benchmarking Dashboard</h1>
           <p>Browse recent runs, inspect task history, and cancel active executions.</p>
         </div>
-        <button className="secondary-btn" onClick={() => void refreshCurrentView()} disabled={isLoadingRuns || isRefreshingRun}>
-          Refresh History
-        </button>
+        <div className="detail-actions">
+          <a className="secondary-btn link-btn" href="/analytics">
+            Analytics
+          </a>
+          <button className="secondary-btn" onClick={() => void refreshCurrentView()} disabled={isLoadingRuns || isRefreshingRun}>
+            Refresh History
+          </button>
+        </div>
       </header>
 
       <section className="create-run-panel">
@@ -604,9 +623,6 @@ function DashboardPage() {
                   {jobStatus.archivedAt && <p>Archived: {formatDate(jobStatus.archivedAt)}</p>}
                 </div>
                 <div className="detail-actions">
-                  <a className="secondary-btn link-btn" href={`/analytics/${jobStatus.runId}`}>
-                    Analytics
-                  </a>
                   <button className="secondary-btn" onClick={() => void refreshCurrentView()} disabled={isRefreshingRun}>
                     Refresh
                   </button>
@@ -794,8 +810,7 @@ function DashboardPage() {
   )
 }
 
-function RunAnalyticsPage({ runId }: { runId: string }) {
-  const [jobStatus, setJobStatus] = useState<JobStatusResponse | null>(null)
+function AnalyticsOverviewPage() {
   const [evaluations, setEvaluations] = useState<BenchmarkEvaluationResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -804,19 +819,11 @@ function RunAnalyticsPage({ runId }: { runId: string }) {
     const loadAnalytics = async () => {
       setLoading(true)
       try {
-        const [statusResponse, evaluationsResponse] = await Promise.all([
-          fetch(`/bench/runs/${runId}?t=${Date.now()}`, { cache: 'no-store' }),
-          fetch(`/bench/runs/${runId}/evaluations?t=${Date.now()}`, { cache: 'no-store' }),
-        ])
-
-        if (!statusResponse.ok) {
-          throw new Error(await statusResponse.text())
-        }
+        const evaluationsResponse = await fetch(`/bench/analytics/overview?t=${Date.now()}`, { cache: 'no-store' })
         if (!evaluationsResponse.ok) {
           throw new Error(await evaluationsResponse.text())
         }
 
-        setJobStatus((await statusResponse.json()) as JobStatusResponse)
         setEvaluations((await evaluationsResponse.json()) as BenchmarkEvaluationResponse)
         setError(null)
       } catch (loadError) {
@@ -827,15 +834,7 @@ function RunAnalyticsPage({ runId }: { runId: string }) {
     }
 
     void loadAnalytics()
-  }, [runId])
-
-  const taskStatusIndex = useMemo(() => {
-    const statusIndex = new Map<string, TaskProgress>()
-    for (const task of jobStatus?.tasks ?? []) {
-      statusIndex.set(buildTaskKey(task.language, task.dataset, task.tool), task)
-    }
-    return statusIndex
-  }, [jobStatus])
+  }, [])
 
   return (
     <main className="app-shell analytics-shell">
@@ -844,13 +843,8 @@ function RunAnalyticsPage({ runId }: { runId: string }) {
           <a className="back-link" href="/">
             Back to dashboard
           </a>
-          <h1>Run Analytics</h1>
-          <p>Dataset and tool quality metrics for one benchmark run.</p>
-          {jobStatus && (
-            <p className="analytics-subtitle">
-              {jobStatus.requestedLanguage} / {shortRunId(jobStatus.runId)} / {jobStatus.status}
-            </p>
-          )}
+          <h1>Analytics</h1>
+          <p>Cross-run dataset and tool quality metrics from the latest recorded executions.</p>
         </div>
         <a className="secondary-btn link-btn" href={`/`}>
           Open Dashboard
@@ -890,13 +884,11 @@ function RunAnalyticsPage({ runId }: { runId: string }) {
 
                     <div className="analytics-tool-grid">
                       {Object.entries(datasetEvaluation.tools).map(([tool, toolEvaluation]) => {
-                        const task = taskStatusIndex.get(buildTaskKey(language, dataset, tool))
                         return (
                           <section key={tool} className="analytics-tool-card">
                             <div className="analytics-tool-head">
                               <div>
                                 <h4>{tool}</h4>
-                                {task && <span className={`status-tag-inline status-${task.status.toLowerCase()}`}>{task.status}</span>}
                               </div>
                               <a className="secondary-btn link-btn compact-link" href={toolEvaluation.weekOverWeekChartUrl} target="_blank" rel="noreferrer">
                                 Week over week
@@ -928,12 +920,6 @@ function RunAnalyticsPage({ runId }: { runId: string }) {
                                 <strong>{formatMetricPercent(toolEvaluation.f1Score)}</strong>
                               </div>
                             </div>
-                            {task && (
-                              <p className="dataset-meta">
-                                Attempts: {task.attempts}
-                                {task.completedAt ? ` • Completed ${formatDate(task.completedAt)}` : ''}
-                              </p>
-                            )}
                           </section>
                         )
                       })}
@@ -1014,13 +1000,8 @@ function isFailureLike(status: TaskStatus) {
   return status === 'FAILED' || status === 'TIMEOUT' || status === 'SKIPPED_CIRCUIT_OPEN' || status === 'CANCELLED'
 }
 
-function getAnalyticsRunId() {
-  const match = window.location.pathname.match(/^\/analytics\/([0-9a-fA-F-]+)$/)
-  return match ? match[1] : null
-}
-
-function buildTaskKey(language: string, dataset: string, tool: string) {
-  return `${language}::${dataset}::${tool}`
+function isAnalyticsPage() {
+  return window.location.pathname === '/analytics'
 }
 
 function formatMetricPercent(value: number | null) {

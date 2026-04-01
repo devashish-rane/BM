@@ -50,6 +50,38 @@ public class BenchmarkEvaluationService {
         return new BenchmarkEvaluationResponse(buildEvaluations(run, tasks));
     }
 
+    public BenchmarkEvaluationResponse getAnalyticsOverview() {
+        List<BenchmarkTaskEntity> tasks = benchmarkTaskRepository.findAllForAnalyticsOverview();
+        Map<String, Map<String, DatasetEvaluationResponse>> evaluations = new LinkedHashMap<>();
+        Map<String, BenchmarkTaskEntity> latestTaskByToolKey = new LinkedHashMap<>();
+
+        for (BenchmarkTaskEntity task : tasks) {
+            latestTaskByToolKey.put(task.getLanguage() + "||" + task.getDataset() + "||" + task.getTool(), task);
+        }
+
+        for (BenchmarkTaskEntity task : latestTaskByToolKey.values()) {
+            ExpectedDatasetBaseline baseline = expectedResultGeneratorService.generate(task.getLanguage(), task.getDataset());
+            ToolEvaluationResponse toolEvaluation = evaluateTool(task.getRun(), task, baseline);
+
+            Map<String, DatasetEvaluationResponse> datasets = evaluations.computeIfAbsent(task.getLanguage(), key -> new LinkedHashMap<>());
+            DatasetEvaluationResponse existingDatasetEvaluation = datasets.get(task.getDataset());
+            Map<String, ToolEvaluationResponse> tools = existingDatasetEvaluation == null
+                ? new LinkedHashMap<>()
+                : new LinkedHashMap<>(existingDatasetEvaluation.tools());
+            tools.put(task.getTool(), toolEvaluation);
+
+            datasets.put(task.getDataset(), new DatasetEvaluationResponse(
+                baseline.sourceRepoUrl(),
+                baseline.defaultBranch(),
+                baseline.expectedFindings(),
+                baseline.expectedResultVersion(),
+                tools
+            ));
+        }
+
+        return new BenchmarkEvaluationResponse(evaluations);
+    }
+
     public ToolEvaluationResponse getToolEvaluation(UUID runId, String language, String dataset, String tool) {
         BenchmarkRunEntity run = benchmarkRunRepository.findById(runId)
             .orElseThrow(() -> new ResourceNotFoundException("Run not found for runId: " + runId));
