@@ -17,18 +17,23 @@ public class CommonThreadPoolConfig {
         tpte.setQueueCapacity(100);
         tpte.setKeepAliveSeconds(60);
         tpte.setThreadNamePrefix("async-tool-exec");
+        tpte.setWaitForTasksToCompleteOnShutdown(true);
+        tpte.setAwaitTerminationSeconds(30);
         tpte.initialize();
         return tpte;
     }
 
     @Bean
-    public Executor jobOrchestratorExecutor() {
+    public Executor taskWorkerExecutor(BenchmarkExecutionConfig benchmarkExecutionConfig) {
         ThreadPoolTaskExecutor tpte = new ThreadPoolTaskExecutor();
-        tpte.setCorePoolSize(4);
-        tpte.setMaxPoolSize(8);
-        tpte.setQueueCapacity(200);
+        int concurrency = Math.max(1, benchmarkExecutionConfig.getMaxConcurrency());
+        tpte.setCorePoolSize(concurrency);
+        tpte.setMaxPoolSize(concurrency);
+        tpte.setQueueCapacity(concurrency * 4);
         tpte.setKeepAliveSeconds(60);
-        tpte.setThreadNamePrefix("job-orchestrator-");
+        tpte.setThreadNamePrefix("benchmark-task-worker-");
+        tpte.setWaitForTasksToCompleteOnShutdown(true);
+        tpte.setAwaitTerminationSeconds(60);
         tpte.initialize();
         return tpte;
     }

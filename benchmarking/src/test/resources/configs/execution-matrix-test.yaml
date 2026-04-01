@@ -1,0 +1,6 @@
+execution-matrix:
+  language:
+    java:
+      smoke:
+        - semgrep
+        - qca

@@ -1,0 +1,47 @@
+dataset-catalog:
+  language:
+    java:
+      owasp:
+        source-repo-url: "https://github.com/aws-samples/amazon-codeguru-detectors.git"
+        default-branch: "main"
+        expected-findings: 54
+      semgrep_compiled:
+        source-repo-url: "https://github.com/semgrep/semgrep-rules.git"
+        default-branch: "develop"
+        expected-findings: 43
+    python:
+      codcop:
+        source-repo-url: "https://github.com/PyCQA/bandit.git"
+        default-branch: "main"
+        expected-findings: 47
+      semgrep_prime:
+        source-repo-url: "https://github.com/returntocorp/semgrep-rules.git"
+        default-branch: "develop"
+        expected-findings: 39
+    javascript:
+      owasp_js:
+        source-repo-url: "https://github.com/eslint-community/eslint-plugin-security.git"
+        default-branch: "main"
+        expected-findings: 35
+      eslint_security:
+        source-repo-url: "https://github.com/github/codeql.git"
+        default-branch: "main"
+        expected-findings: 41
+    go:
+      gosec_suite:
+        source-repo-url: "https://github.com/securego/gosec.git"
+        default-branch: "master"
+        expected-findings: 33
+      standard_lib_checks:
+        source-repo-url: "https://github.com/golang/vulndb.git"
+        default-branch: "main"
+        expected-findings: 29
+    csharp:
+      dotnet_security:
+        source-repo-url: "https://github.com/dotnet/roslyn-analyzers.git"
+        default-branch: "main"
+        expected-findings: 44
+      roslyn_ruleset:
+        source-repo-url: "https://github.com/github/codeql.git"
+        default-branch: "main"
+        expected-findings: 31

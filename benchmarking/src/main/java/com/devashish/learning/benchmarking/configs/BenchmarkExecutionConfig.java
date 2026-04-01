@@ -10,6 +10,10 @@ public class BenchmarkExecutionConfig {
     private long taskTimeoutMs = 600000;
     private int circuitBreakerFailureThreshold = 3;
     private long circuitBreakerOpenMs = 60000;
+    private long retryBackoffMs = 5000;
+    private int workerBatchSize = 6;
+    private int claimWindowSize = 100;
+    private long staleRunningTaskGraceMs = 30000;
 
     public int getMaxConcurrency() {
         return maxConcurrency;
@@ -49,5 +53,37 @@ public class BenchmarkExecutionConfig {
 
     public void setCircuitBreakerOpenMs(long circuitBreakerOpenMs) {
         this.circuitBreakerOpenMs = circuitBreakerOpenMs;
+    }
+
+    public long getRetryBackoffMs() {
+        return retryBackoffMs;
+    }
+
+    public void setRetryBackoffMs(long retryBackoffMs) {
+        this.retryBackoffMs = retryBackoffMs;
+    }
+
+    public int getWorkerBatchSize() {
+        return workerBatchSize;
+    }
+
+    public void setWorkerBatchSize(int workerBatchSize) {
+        this.workerBatchSize = workerBatchSize;
+    }
+
+    public int getClaimWindowSize() {
+        return claimWindowSize;
+    }
+
+    public void setClaimWindowSize(int claimWindowSize) {
+        this.claimWindowSize = claimWindowSize;
+    }
+
+    public long getStaleRunningTaskGraceMs() {
+        return staleRunningTaskGraceMs;
+    }
+
+    public void setStaleRunningTaskGraceMs(long staleRunningTaskGraceMs) {
+        this.staleRunningTaskGraceMs = staleRunningTaskGraceMs;
     }
 }

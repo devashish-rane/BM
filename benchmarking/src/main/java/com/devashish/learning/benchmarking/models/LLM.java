@@ -16,7 +16,7 @@ public class LLM implements ITool {
     @Value("classpath:dummy-data/llm-response.json")
     private Resource llmDummyFile;
 
-    public String executeTool(Task task){
+    public String executeTool(ToolExecutionRequest task){
         try (InputStream inputStream = llmDummyFile.getInputStream()) {
             String response = new String(inputStream.readAllBytes(), StandardCharsets.UTF_8);
             return response.isBlank() ? "[]" : response;
