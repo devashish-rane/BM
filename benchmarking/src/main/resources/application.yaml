@@ -23,7 +23,7 @@ benchmark:
   execution:
     max-concurrency: 6
     max-retries: 1
-    task-timeout-ms: 600000
+    task-timeout-ms: 60000
     circuit-breaker-failure-threshold: 3
     circuit-breaker-open-ms: 60000
     retry-backoff-ms: 5000
@@ -39,3 +39,8 @@ management:
   endpoint:
     health:
       show-details: always
+logging:
+  level:
+    root: INFO
+    org.springframework.web: INFO
+    org.hibernate.SQL: WARN

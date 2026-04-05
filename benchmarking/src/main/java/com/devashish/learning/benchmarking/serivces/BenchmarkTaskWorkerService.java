@@ -224,6 +224,7 @@ public class BenchmarkTaskWorkerService {
     private void executeClaimedTask(ClaimedTask claimedTask) {
         Instant executionStartedAt = Instant.now();
         CircuitBreakerState circuitBreakerState = circuitBreakerByTool.computeIfAbsent(claimedTask.tool(), key -> new CircuitBreakerState());
+        CompletableFuture<ToolExecutionResult> executionFuture = null;
 
         MDC.put("runId", claimedTask.runId().toString());
         MDC.put("taskId", claimedTask.taskId().toString());
@@ -241,7 +242,7 @@ public class BenchmarkTaskWorkerService {
                 return;
             }
 
-            CompletableFuture<ToolExecutionResult> executionFuture = runOrchrestratorService.runTaskWithAppropriateTool(claimedTask.request());
+            executionFuture = runOrchrestratorService.runTaskWithAppropriateTool(claimedTask.request());
             try {
                 ToolExecutionResult result = executionFuture.get(benchmarkExecutionConfig.getTaskTimeoutMs(), TimeUnit.MILLISECONDS);
                 circuitBreakerState.onSuccess();
@@ -257,6 +258,12 @@ public class BenchmarkTaskWorkerService {
                 circuitBreakerState.onFailure(benchmarkExecutionConfig);
                 handleFailure(claimedTask, TaskStatus.FAILED, rootMessage(ex), executionStartedAt);
             }
+        } catch (Exception ex) {
+            if (executionFuture != null) {
+                executionFuture.cancel(true);
+            }
+            circuitBreakerState.onFailure(benchmarkExecutionConfig);
+            handleFailure(claimedTask, TaskStatus.FAILED, rootMessage(ex), executionStartedAt);
         } finally {
             MDC.clear();
         }

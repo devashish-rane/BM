@@ -30,7 +30,7 @@
 		<java.version>17</java.version>
 		<testcontainers.version>1.21.2</testcontainers.version>
 	</properties>
-	<dependencies>
+		<dependencies>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter</artifactId>
@@ -91,14 +91,20 @@
 			<version>${testcontainers.version}</version>
 		</dependency>
 
-		<dependency>
-			<groupId>org.testcontainers</groupId>
-			<artifactId>postgresql</artifactId>
-			<scope>test</scope>
-			<version>${testcontainers.version}</version>
-		</dependency>
+			<dependency>
+				<groupId>org.testcontainers</groupId>
+				<artifactId>postgresql</artifactId>
+				<scope>test</scope>
+				<version>${testcontainers.version}</version>
+			</dependency>
 
-	</dependencies>
+			<dependency>
+				<groupId>net.logstash.logback</groupId>
+				<artifactId>logstash-logback-encoder</artifactId>
+				<version>8.0</version>
+			</dependency>
+
+		</dependencies>
 
 
 	<build>
