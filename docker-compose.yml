@@ -1,0 +1,22 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: benchmarking-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: benchmarking
+      POSTGRES_USER: benchmarking
+      POSTGRES_PASSWORD: benchmarking
+    ports:
+      - "5432:5432"
+    volumes:
+      - benchmarking-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U benchmarking -d benchmarking"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  benchmarking-postgres-data:

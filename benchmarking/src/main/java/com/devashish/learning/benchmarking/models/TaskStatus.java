@@ -6,5 +6,6 @@ public enum TaskStatus {
     SUCCESS,
     FAILED,
     TIMEOUT,
-    SKIPPED_CIRCUIT_OPEN
+    SKIPPED_CIRCUIT_OPEN,
+    CANCELLED
 }

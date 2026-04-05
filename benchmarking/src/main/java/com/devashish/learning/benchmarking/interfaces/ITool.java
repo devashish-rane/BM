@@ -1,7 +1,7 @@
 package com.devashish.learning.benchmarking.interfaces;
 
-import com.devashish.learning.benchmarking.models.Task;
+import com.devashish.learning.benchmarking.models.ToolExecutionRequest;
 
 public interface ITool {
-    String executeTool(Task task);
+    String executeTool(ToolExecutionRequest task);
 }

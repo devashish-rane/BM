@@ -16,7 +16,7 @@ public class Semgrep implements ITool{
     @Value("classpath:dummy-data/semgrep-response.json")
     private Resource semgrepDummyFile;
 
-    public String executeTool(Task task){
+    public String executeTool(ToolExecutionRequest task){
         
         try{
             Thread.sleep(2000);

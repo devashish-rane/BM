@@ -1,10 +1,9 @@
 package com.devashish.learning.benchmarking.models;
 
 import java.time.Instant;
-import java.util.List;
 import java.util.UUID;
 
-public record JobStatusResponse(
+public record BenchmarkRunSummaryResponse(
     UUID runId,
     String requestedLanguage,
     JobStatus status,
@@ -20,6 +19,5 @@ public record JobStatusResponse(
     Instant submittedAt,
     Instant startedAt,
     Instant completedAt,
-    Instant archivedAt,
-    List<TaskProgressView> tasks
+    Instant archivedAt
 ) {}

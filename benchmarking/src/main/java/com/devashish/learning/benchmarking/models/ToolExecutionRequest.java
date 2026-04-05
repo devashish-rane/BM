@@ -1,10 +1,7 @@
 package com.devashish.learning.benchmarking.models;
 
-// import org.springframework.stereotype.Component;
-
-
-public record Task(
+public record ToolExecutionRequest(
     String language,
     String dataset,
     String tool
-){}
+) {}

@@ -16,7 +16,7 @@ public class QCA implements ITool{
     @Value("classpath:dummy-data/qca-response.json")
     private Resource qcaDummyFile;
 
-    public String executeTool(Task task){
+    public String executeTool(ToolExecutionRequest task){
         try{
             Thread.sleep(2000);
         }
