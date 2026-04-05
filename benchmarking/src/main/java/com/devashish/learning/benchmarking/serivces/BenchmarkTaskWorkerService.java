@@ -14,11 +14,13 @@ import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Supplier;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -42,6 +44,7 @@ import io.micrometer.core.instrument.Timer;
 public class BenchmarkTaskWorkerService {
 
     private static final Logger log = LoggerFactory.getLogger(BenchmarkTaskWorkerService.class);
+    private static final int MAX_OPTIMISTIC_RETRIES = 3;
 
     private final BenchmarkTaskRepository benchmarkTaskRepository;
     private final BenchmarkRunRepository benchmarkRunRepository;
@@ -84,7 +87,13 @@ public class BenchmarkTaskWorkerService {
             return;
         }
 
-        List<ClaimedTask> claimedTasks = claimReadyTasks(Math.min(availableSlots, Math.max(1, benchmarkExecutionConfig.getWorkerBatchSize())));
+        List<ClaimedTask> claimedTasks;
+        try {
+            claimedTasks = claimReadyTasks(Math.min(availableSlots, Math.max(1, benchmarkExecutionConfig.getWorkerBatchSize())));
+        } catch (ObjectOptimisticLockingFailureException ex) {
+            log.warn("Skipped current poll cycle due to optimistic-lock contention while claiming tasks: {}", rootMessage(ex));
+            return;
+        }
         if (!claimedTasks.isEmpty()) {
             log.info("Claimed {} benchmark task(s) for execution", claimedTasks.size());
         }
@@ -103,7 +112,7 @@ public class BenchmarkTaskWorkerService {
     }
 
     private List<ClaimedTask> claimReadyTasks(int limit) {
-        List<ClaimedTask> claimedTasks = transactionTemplate.execute(status -> {
+        List<ClaimedTask> claimedTasks = executeWithOptimisticRetry("claiming ready tasks", () -> transactionTemplate.execute(status -> {
             List<ClaimedTask> claimedTaskBatch = new ArrayList<>();
             Instant now = Instant.now();
             int claimWindowSize = Math.max(limit, benchmarkExecutionConfig.getClaimWindowSize());
@@ -137,7 +146,7 @@ public class BenchmarkTaskWorkerService {
                 claimedTaskBatch.add(new ClaimedTask(task.getId(), run.getId(), attempt.getId(), task.getAttemptCount(), task.getMaxAttempts(), task.getTool(), task.toExecutionRequest()));
             }
             return claimedTaskBatch;
-        });
+        }));
         return claimedTasks == null ? List.of() : claimedTasks;
     }
 
@@ -147,7 +156,7 @@ public class BenchmarkTaskWorkerService {
             Math.max(1L, benchmarkExecutionConfig.getTaskTimeoutMs() + benchmarkExecutionConfig.getStaleRunningTaskGraceMs())
         );
 
-        Integer recoveredCount = transactionTemplate.execute(status -> {
+        Integer recoveredCount = executeWithOptimisticRetry("recovering stale running tasks", () -> transactionTemplate.execute(status -> {
             List<BenchmarkTaskEntity> staleTasks = benchmarkTaskRepository.findStaleRunningTasks(cutoff);
             if (staleTasks.isEmpty()) {
                 return 0;
@@ -185,7 +194,7 @@ public class BenchmarkTaskWorkerService {
 
             meterRegistry.counter("benchmark.task.recovered_stale_running").increment(staleTasks.size());
             return staleTasks.size();
-        });
+        }));
 
         if (recoveredCount != null && recoveredCount > 0) {
             log.warn("Recovered {} stale RUNNING task(s) that exceeded the timeout window", recoveredCount);
@@ -247,6 +256,8 @@ public class BenchmarkTaskWorkerService {
                 ToolExecutionResult result = executionFuture.get(benchmarkExecutionConfig.getTaskTimeoutMs(), TimeUnit.MILLISECONDS);
                 circuitBreakerState.onSuccess();
                 completeTask(claimedTask, TaskStatus.SUCCESS, result.result(), null, executionStartedAt, false);
+            } catch (ObjectOptimisticLockingFailureException ex) {
+                throw ex;
             } catch (TimeoutException ex) {
                 executionFuture.cancel(true);
                 circuitBreakerState.onFailure(benchmarkExecutionConfig);
@@ -258,6 +269,15 @@ public class BenchmarkTaskWorkerService {
                 circuitBreakerState.onFailure(benchmarkExecutionConfig);
                 handleFailure(claimedTask, TaskStatus.FAILED, rootMessage(ex), executionStartedAt);
             }
+        } catch (ObjectOptimisticLockingFailureException ex) {
+            if (executionFuture != null) {
+                executionFuture.cancel(true);
+            }
+            log.warn(
+                "Could not finalize task {} due to optimistic-lock contention after {} retries. It will be reconciled by next poll/recovery cycle.",
+                claimedTask.taskId(),
+                MAX_OPTIMISTIC_RETRIES
+            );
         } catch (Exception ex) {
             if (executionFuture != null) {
                 executionFuture.cancel(true);
@@ -284,37 +304,129 @@ public class BenchmarkTaskWorkerService {
     ) {
         Instant now = Instant.now();
         long durationMs = Math.max(0L, now.toEpochMilli() - executionStartedAt.toEpochMilli());
+        Instant nextRetryAt = retryable ? now.plusMillis(Math.max(1L, benchmarkExecutionConfig.getRetryBackoffMs())) : null;
+        boolean persisted;
+        try {
+            executeWithOptimisticRetry("completing task " + claimedTask.taskId(), () -> {
+                transactionTemplate.executeWithoutResult(status -> {
+                    BenchmarkTaskEntity task = benchmarkTaskRepository.findById(claimedTask.taskId()).orElseThrow();
+                    TaskAttemptEntity attempt = taskAttemptRepository.findById(claimedTask.attemptId()).orElseThrow();
+                    BenchmarkRunEntity run = task.getRun();
 
-        transactionTemplate.executeWithoutResult(status -> {
-            BenchmarkTaskEntity task = benchmarkTaskRepository.findById(claimedTask.taskId()).orElseThrow();
-            TaskAttemptEntity attempt = taskAttemptRepository.findById(claimedTask.attemptId()).orElseThrow();
-            BenchmarkRunEntity run = task.getRun();
+                    if (retryable) {
+                        task.markRetryableFailure(completionStatus, errorMessage, now, nextRetryAt);
+                        run.markTaskPendingAfterRetry(nextRetryAt);
+                        benchmarkTaskRepository.save(task);
+                        benchmarkRunRepository.save(run);
+                        attempt.markCompleted(completionStatus, errorMessage, durationMs, now);
+                        return;
+                    }
 
-            if (retryable) {
-                Instant nextRetryAt = now.plusMillis(Math.max(1L, benchmarkExecutionConfig.getRetryBackoffMs()));
-                task.markRetryableFailure(completionStatus, errorMessage, now, nextRetryAt);
-                run.markTaskPendingAfterRetry(nextRetryAt);
-                benchmarkTaskRepository.save(task);
-                benchmarkRunRepository.save(run);
-                attempt.markCompleted(completionStatus, errorMessage, durationMs, now);
-                log.warn("Task {} failed on attempt {} and was re-queued for retry at {}", claimedTask.taskId(), claimedTask.attemptNumber(), nextRetryAt);
-                meterRegistry.counter("benchmark.task.retry", "tool", claimedTask.tool(), "status", completionStatus.name()).increment();
-                return;
+                    task.markTerminal(completionStatus, errorMessage, rawResult, now);
+                    run.markTaskTerminal(completionStatus, now);
+                    benchmarkTaskRepository.save(task);
+                    benchmarkRunRepository.save(run);
+                    attempt.markCompleted(completionStatus, errorMessage, durationMs, now);
+                });
+                return null;
+            });
+            persisted = true;
+        } catch (ObjectOptimisticLockingFailureException ex) {
+            persisted = reconcileTaskAfterFinalizeContention(
+                claimedTask,
+                completionStatus,
+                rawResult,
+                errorMessage,
+                now,
+                durationMs,
+                retryable,
+                nextRetryAt
+            );
+        }
+
+        if (!persisted) {
+            log.warn(
+                "Could not persist completion for task {} after optimistic-lock reconciliation. Task may stay RUNNING until stale-recovery.",
+                claimedTask.taskId()
+            );
+            return;
+        }
+
+        if (retryable) {
+            log.warn("Task {} failed on attempt {} and was re-queued for retry at {}", claimedTask.taskId(), claimedTask.attemptNumber(), nextRetryAt);
+            meterRegistry.counter("benchmark.task.retry", "tool", claimedTask.tool(), "status", completionStatus.name()).increment();
+            return;
+        }
+
+        meterRegistry.counter("benchmark.task.completed", "tool", claimedTask.tool(), "status", completionStatus.name()).increment();
+        Timer.builder("benchmark.task.duration")
+            .tag("tool", claimedTask.tool())
+            .tag("status", completionStatus.name())
+            .register(meterRegistry)
+            .record(durationMs, TimeUnit.MILLISECONDS);
+        log.info("Task {} completed with status {} in {} ms", claimedTask.taskId(), completionStatus, durationMs);
+    }
+
+    private boolean reconcileTaskAfterFinalizeContention(
+        ClaimedTask claimedTask,
+        TaskStatus completionStatus,
+        String rawResult,
+        String errorMessage,
+        Instant now,
+        long durationMs,
+        boolean retryable,
+        Instant nextRetryAt
+    ) {
+        try {
+            return executeWithOptimisticRetry("reconciling task " + claimedTask.taskId() + " after finalize contention", () -> {
+                final boolean[] updated = {false};
+                transactionTemplate.executeWithoutResult(status -> {
+                    BenchmarkTaskEntity task = benchmarkTaskRepository.findById(claimedTask.taskId()).orElseThrow();
+                    if (task.getStatus() != TaskStatus.RUNNING) {
+                        return;
+                    }
+
+                    if (retryable) {
+                        task.markRetryableFailure(completionStatus, errorMessage, now, nextRetryAt);
+                    } else {
+                        task.markTerminal(completionStatus, errorMessage, rawResult, now);
+                    }
+                    benchmarkTaskRepository.save(task);
+                    taskAttemptRepository.findById(claimedTask.attemptId())
+                        .ifPresent(attempt -> attempt.markCompleted(completionStatus, errorMessage, durationMs, now));
+
+                    BenchmarkRunEntity run = benchmarkRunRepository.findById(claimedTask.runId()).orElseThrow();
+                    List<BenchmarkTaskEntity> runTasks = benchmarkTaskRepository.findByRunIdOrderByLanguageAscDatasetAscToolAsc(claimedTask.runId());
+                    run.recalculateFromTasks(runTasks, now);
+                    benchmarkRunRepository.save(run);
+                    updated[0] = true;
+                });
+                return updated[0];
+            });
+        } catch (ObjectOptimisticLockingFailureException ex) {
+            return false;
+        }
+    }
+
+    private <T> T executeWithOptimisticRetry(String operation, Supplier<T> supplier) {
+        ObjectOptimisticLockingFailureException lastException = null;
+        for (int attempt = 1; attempt <= MAX_OPTIMISTIC_RETRIES; attempt++) {
+            try {
+                return supplier.get();
+            } catch (ObjectOptimisticLockingFailureException ex) {
+                lastException = ex;
+                if (attempt == MAX_OPTIMISTIC_RETRIES) {
+                    break;
+                }
+                log.debug(
+                    "Optimistic-lock contention during {} on attempt {}/{}. Retrying.",
+                    operation,
+                    attempt,
+                    MAX_OPTIMISTIC_RETRIES
+                );
             }
-
-            task.markTerminal(completionStatus, errorMessage, rawResult, now);
-            run.markTaskTerminal(completionStatus, now);
-            benchmarkTaskRepository.save(task);
-            benchmarkRunRepository.save(run);
-            attempt.markCompleted(completionStatus, errorMessage, durationMs, now);
-            meterRegistry.counter("benchmark.task.completed", "tool", claimedTask.tool(), "status", completionStatus.name()).increment();
-            Timer.builder("benchmark.task.duration")
-                .tag("tool", claimedTask.tool())
-                .tag("status", completionStatus.name())
-                .register(meterRegistry)
-                .record(durationMs, TimeUnit.MILLISECONDS);
-            log.info("Task {} completed with status {} in {} ms", claimedTask.taskId(), completionStatus, durationMs);
-        });
+        }
+        throw lastException;
     }
 
     private String rootMessage(Throwable throwable) {
