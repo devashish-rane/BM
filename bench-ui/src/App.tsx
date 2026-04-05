@@ -623,9 +623,6 @@ function DashboardPage() {
                   {jobStatus.archivedAt && <p>Archived: {formatDate(jobStatus.archivedAt)}</p>}
                 </div>
                 <div className="detail-actions">
-                  <button className="secondary-btn" onClick={() => void refreshCurrentView()} disabled={isRefreshingRun}>
-                    Refresh
-                  </button>
                   <button className="secondary-btn" onClick={() => void archiveSelectedRun()} disabled={!canArchive || isArchiving}>
                     {isArchiving ? 'Archiving...' : 'Archive'}
                   </button>
