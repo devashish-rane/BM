@@ -7,7 +7,7 @@ public class BenchmarkExecutionConfig {
 
     private int maxConcurrency = 6;
     private int maxRetries = 1;
-    private long taskTimeoutMs = 60000;
+    private long taskTimeoutMs = 600000;
     private int circuitBreakerFailureThreshold = 3;
     private long circuitBreakerOpenMs = 60000;
     private long retryBackoffMs = 5000;
